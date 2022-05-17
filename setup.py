@@ -8,13 +8,13 @@ import site
 import sys
 site.ENABLE_USER_SITE = "--user" in sys.argv[1:]
 
-NAME = 'test'
-URL = ''
+NAME = 'Gsub'
+URL = 'https://github.com/FlorianCHA/Gsub'
 CURRENT_PATH = Path(__file__).resolve().parent
-VERSION = '1.0.0'
+VERSION = '2.0.0'
 
 __doc__ = """Gsub is a Graphical user interface that help for GenBank submission.
-            For now, this tools take some input file : 
+            For now, this tools take some input file :
                 * fasta files which contains all contigs to submit at GenBank
                 * template.sbt, a template which create at this link : https://submit.ncbi.nlm.nih.gov/genbank/template/submission/"""
 
@@ -36,9 +36,10 @@ def main():
         license='GPLv3',
 
         # Package information
-        packages=find_packages(),
-        package_data={'Logo': ['image/*.png'], 'tools_windows': ['tools/tbl2asn.windows/*'], 'tools_linux': ['tools/*.linux']},
+        packages= ['Gsub'],
+        package_data={'Gsub': ['*','image/*','tools/*','tools/tbl2asn.windows/*']},
         include_package_data=True,
+        setup_requires=['setuptools_scm'],
         python_requires='>=3.6',
         install_requires=[
             'pyrodigal',
@@ -79,9 +80,10 @@ def main():
         options={
             'bdist_wheel': {'universal': True}
         },
+
         entry_points={
-            'console_scripts': [f'{NAME} = {NAME}.submission_GenBank_UI:main']},
-        zip_safe=True,  # Don't install the lib as an .egg zipfile
+            f'{NAME}': [f'{NAME} = __init__'],
+            'console_scripts': [f'{NAME} = {NAME}.submission_GenBank_UI:IU_parser']},
     )
 
 

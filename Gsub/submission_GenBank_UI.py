@@ -24,9 +24,9 @@ def choose_tbl2asn():
     This tools verify the OS system and choose the correct tbl2asn to launch for your computer
     """
     if platform.system() == 'Linux':
-        return(f'{Path(__file__).resolve().parent.parent}/tools/tbl2asn.linux')
+        return(f'{Path(__file__).resolve().parent}/tools/tbl2asn.linux')
     elif platform.system() == 'Windows':
-        return(f'{Path(__file__).resolve().parent.parent}/tools/tbl2asn.windows/tbl2asn.exe')
+        return(f'{Path(__file__).resolve().parent}/tools/tbl2asn.windows/tbl2asn.exe')
     else:
         raise TypeError(f'You OS system are not support, for now this package works only in Linux and Windows.')
 
@@ -270,7 +270,7 @@ def print_progress(index, total):
 @Gooey(program_name="Submit to GenBank",
        program_description="\nCreate ASN file for submission at GenBank",
        progress_regex=r"^Progress (\d+) %$",
-       resource_path=f'{Path(__file__).resolve().parent.parent}/image/',
+       resource_path=f'{Path(__file__).resolve().parent}/image/',
        richtext_controls=True,
        default_size=(950, 530))
 def IU_parser():
