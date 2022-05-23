@@ -13,7 +13,7 @@ from Bio.SeqRecord import SeqRecord
 # Import gooey for graphical argument parser
 from gooey import Gooey
 from gooey import GooeyParser
-import sys
+import sys, os, shutil
 # For know the OS system
 import platform
 
@@ -174,7 +174,7 @@ def orf_to_feature(dico_orf, contig, output_file):
         output.write(text)
 
 
-def create_submit_file(fasta, template, output, minlength):
+def create_submit_file(fasta, template, output, minlength, comment):
     """
     This function take fasta input which contains all contigs to submit, the template ncbi,
     the directory output and the min length for a orf and launch all other function for create the ASN file.
@@ -187,11 +187,11 @@ def create_submit_file(fasta, template, output, minlength):
         print_progress(count, len_fasta)  # Progress bar
         sys.stdout.flush()  # For print correctly progress bar in Graphical User interface (GUI)
         directory_tmp = f'{output}/{seq_id}'
-        subprocess.run(f'mkdir -p {directory_tmp}', shell=True)
+        if not Path(directory_tmp).exists() :
+            os.mkdir(directory_tmp)
         # Create fasta for the contigs
         fasta_tmp = f'{directory_tmp}/{seq_id}.fasta'
         create_fasta(fasta_dict[seq_id], fasta_tmp)
-
         # Create feature file of contigs
         tbl_tmp = f'{directory_tmp}/{seq_id}.tbl'
         dico_orf = search_orf_orffinder(fasta_dict[seq_id], minlength)
@@ -200,7 +200,7 @@ def create_submit_file(fasta, template, output, minlength):
             orf_to_feature(dico_orf, seq_id, tbl_tmp)
         tbl2asn_tool = choose_tbl2asn()
         # Use tbl2asn tools for generate from fasta & tbl the seq file in ASN.1 format
-        subprocess.run(f'{tbl2asn_tool} -t {template} -i {fasta_tmp} -V bv',
+        subprocess.run(f'{tbl2asn_tool} -t {template} -i {fasta_tmp} -y "{comment}" -V bv',
                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
 
 
@@ -212,7 +212,7 @@ def verif_quality(output, contigs_names):
     with open(f'{output}/Error_validation_genebank.txt', 'w') as output_qual:
         for contig_name in contigs_names:
             contig = f"{output}/{contig_name}"
-            file = f'{contig}/errorsummary.val'
+            file = f'{contig}/{contig_name}.val'
             with open(file, 'r') as file_quality:
                 liste_file = list(file_quality)
                 if liste_file:
@@ -231,7 +231,7 @@ def verif_quality(output, contigs_names):
 
 def sort_output(output, contigs_names):
     """
-    This function take output directory path and a list of contigs names for sort all output of this scrpit.
+    This function take output directory path and a list of contigs names for sort all output of this script.
     """
     # Create directory for result
     liste_output_directory = {"ASN_file": ".sqn", "GeneBank_file": ".gbf", "Feature_file": ".tbl",
@@ -243,13 +243,14 @@ def sort_output(output, contigs_names):
                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
         for contig_name in contigs_names:
             contig_path = f"{output}/{contig_name}"
-            subprocess.run(f'mv {contig_path}/{contig_name}{liste_output_directory[output_directory]} '
-                           f'{path_output_directory}',
-                           stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
+            output_path =  f'{path_output_directory}/{contig_name}{liste_output_directory[output_directory]}'
+            if Path(output_path).exists():
+                os.remove(output_path)
+            os.rename(f'{contig_path}/{contig_name}{liste_output_directory[output_directory]}', output_path)
 
     for contig_name in contigs_names:
         contig_path = f"{output}/{contig_name}"
-        subprocess.run(f'rm -rf {contig_path}', stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
+        shutil.rmtree(contig_path)
 
 
 def verify_input(fasta, template):
@@ -278,33 +279,36 @@ def print_progress(index, total):
 @Gooey(program_name="Submit to GenBank",
        program_description="\nCreate ASN file for submission to GenBank",
        progress_regex=r"^Progress (\d+) %$",
-       resource_path=f'{Path(__file__).resolve().parent.as_posix()}/image/',
+       image_dir=Path(__file__).resolve().with_name("image"),
        richtext_controls=True,
-       default_size=(950, 530))
+       default_size=(950, 730))
 def IU_parser():
     parser = GooeyParser(description='Process some integers.')
-    parser.add_argument('fasta', widget="FileChooser",
+    parser.add_argument('Fasta', widget="FileChooser",
                         help='Path of fasta file that contains all contigs to submit to GenBank\n')
-    parser.add_argument('template', widget="FileChooser",
+    parser.add_argument('Template', widget="FileChooser",
                         help='Path of template file generate here :\n'
                              'https://submit.ncbi.nlm.nih.gov/genbank/template/submission/\n')
-    parser.add_argument('output', widget="DirChooser",
-                        help='Path to output directory\n'
-                        )
-    parser.add_argument('minlength', type=int,
+    parser.add_argument('Output', widget="DirChooser",
+                        help='Path to output directory\n')
+    parser.add_argument('Minlength', type=int,
                         default=75,
                         help='minimum length for ORF prediction\n')
-    args = parser.parse_args()
-    fasta = args.fasta
-    template = args.template
-    output = args.output
-    minlength = int(args.minlength)
+    parser.add_argument('-c','--Comment', type=str,
+                        default='',
+                        help='Add comment for all submisson\n')
 
+    args = parser.parse_args()
+    fasta = args.Fasta
+    template = args.Template
+    output = args.Output
+    minlength = int(args.Minlength)
+    comment = args.Comment
     # Verify format for fasta and the extension of template
     verify_input(fasta, template)
 
     # Launch tbl2asn & orffinder
-    create_submit_file(fasta, template, output, minlength)
+    create_submit_file(fasta, template, output, minlength, comment)
 
     # Contigs name contains all Id of seq in fasta input
     contigs_names = list(fasta2dict(fasta).keys())
