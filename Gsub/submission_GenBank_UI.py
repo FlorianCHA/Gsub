@@ -13,7 +13,9 @@ from Bio.SeqRecord import SeqRecord
 # Import gooey for graphical argument parser
 from gooey import Gooey
 from gooey import GooeyParser
-import sys, os, shutil
+import sys
+import os
+import shutil
 # For know the OS system
 import platform
 
@@ -70,7 +72,7 @@ def search_orf(biopython_object):
     return dico
 
 
-def search_orf_orffinder(biopython_object, length_min=75):
+def search_orf_orffinder(biopython_object, length_min=300):
     """
     This function take a biopython sequence in input and create a dict object which contains all information about
     orf predict by orrfinder package (near that ncbi result).
@@ -108,6 +110,63 @@ def search_orf_orffinder(biopython_object, length_min=75):
                         "partial":  orf['trailing'],  # partial is True if start or end is truncated
                         "strand": orf['sense']}
     return dico
+
+
+def remove_overlaps_gene(dico):
+    """
+    This function take the dict output from search_orf_orffinder and remove overlaps gene for kept only the longest
+    """
+    # Transform dico with length as keys :
+    dico_length = {}
+    liste_remove = []
+    for id_orf in dico:
+        length = max(dico[id_orf]['start'], dico[id_orf]['end']) - min(dico[id_orf]['start'], dico[id_orf]['end'])
+        dico_length[length] = {"start": dico[id_orf]['start'], 'end': dico[id_orf]['end'], 'id': id_orf}
+
+    # Create list for sort longest to smallest
+    liste_length = [length for length in dico_length]
+    for length in sorted(liste_length, reverse=True):
+        # Defines the smallest position as the start and the largest position as the end
+        start = min(dico_length[length]['start'], dico_length[length]['end'])
+        end = max(dico_length[length]['start'], dico_length[length]['end'])
+        for length_2 in dico_length:
+            start_2 = min(dico_length[length_2]['start'], dico_length[length_2]['end'])
+            end_2 = max(dico_length[length_2]['start'], dico_length[length_2]['end'])
+            # Look if the two genes do not overlap and if one of the two genes is not already in the list of removes,
+            # in this case the gene of the list is not to take into account
+            if (start_2 < start < end_2 or start_2 < end < end_2) and length not in liste_remove:
+                liste_remove.append(length_2)
+    # Retrieve ID orf from length id
+    liste_id_to_remove = [dico_length[length]['id'] for length in liste_remove]
+
+    i = 0
+    dico_final = {}
+    for id_orf in dico:
+        if id_orf not in liste_id_to_remove:
+            i += 1
+            new_id = f'{id_orf.split("_")[0]}_g{i}'  # Rename gene
+            dico_final[new_id] = dico[id_orf]
+    return dico_final
+
+def remove_strand_gene(dico):
+    """
+    This function take the dict output from search_orf_orffinder and remove gene with different frame
+    """
+    # Retrieve all strand for all orf in the sequence
+    liste_strand = [dico[id_orf]["strand"] for id_orf in dico]
+    # Select the majority strand
+    strand_majority = [strand for strand in liste_strand if liste_strand.count(strand) >= 0.5*len(liste_strand)][0]
+
+    i = 0
+    dico_final = {}
+    for id_orf in dico:
+        # Select all orf with the majority strand
+        if dico[id_orf]['strand'] == strand_majority:
+            i += 1
+            new_id = f'{id_orf.split("_")[0]}_g{i}'  # Rename gene
+            dico_final[new_id] = dico[id_orf]
+
+    return dico_final
 
 
 def orf_pfam(biopython_object, dico_orf, database, contig):
@@ -174,7 +233,7 @@ def orf_to_feature(dico_orf, contig, output_file):
         output.write(text)
 
 
-def create_submit_file(fasta, template, output, minlength, comment):
+def create_submit_file(fasta, template, output, minlength, comment, overlaps, frame):
     """
     This function take fasta input which contains all contigs to submit, the template ncbi,
     the directory output and the min length for a orf and launch all other function for create the ASN file.
@@ -187,7 +246,7 @@ def create_submit_file(fasta, template, output, minlength, comment):
         print_progress(count, len_fasta)  # Progress bar
         sys.stdout.flush()  # For print correctly progress bar in Graphical User interface (GUI)
         directory_tmp = f'{output}/{seq_id}'
-        if not Path(directory_tmp).exists() :
+        if not Path(directory_tmp).exists():
             os.mkdir(directory_tmp)
         # Create fasta for the contigs
         fasta_tmp = f'{directory_tmp}/{seq_id}.fasta'
@@ -195,6 +254,10 @@ def create_submit_file(fasta, template, output, minlength, comment):
         # Create feature file of contigs
         tbl_tmp = f'{directory_tmp}/{seq_id}.tbl'
         dico_orf = search_orf_orffinder(fasta_dict[seq_id], minlength)
+        if not overlaps:
+            dico_orf = remove_overlaps_gene(dico_orf)
+        if not frame:
+            dico_orf = remove_strand_gene(dico_orf)
         # Don't create feature file if no orf find
         if dico_orf is not None:
             orf_to_feature(dico_orf, seq_id, tbl_tmp)
@@ -243,7 +306,7 @@ def sort_output(output, contigs_names):
                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
         for contig_name in contigs_names:
             contig_path = f"{output}/{contig_name}"
-            output_path =  f'{path_output_directory}/{contig_name}{liste_output_directory[output_directory]}'
+            output_path = f'{path_output_directory}/{contig_name}{liste_output_directory[output_directory]}'
             if Path(output_path).exists():
                 os.remove(output_path)
             os.rename(f'{contig_path}/{contig_name}{liste_output_directory[output_directory]}', output_path)
@@ -277,38 +340,60 @@ def print_progress(index, total):
 
 
 @Gooey(program_name="Submit to GenBank",
+       advanced=True,
        program_description="\nCreate ASN file for submission to GenBank",
        progress_regex=r"^Progress (\d+) %$",
        image_dir=Path(__file__).resolve().with_name("image"),
        richtext_controls=True,
+       navigation='SIDEBAR',
        default_size=(950, 730))
 def IU_parser():
     parser = GooeyParser(description='Process some integers.')
-    parser.add_argument('Fasta', widget="FileChooser",
+    sub = parser.add_subparsers(dest='ssss')
+    # Main TABs
+    parser = sub.add_parser('options', prog="Options")
+    parent = parser.add_argument_group('Input Options', gooey_options={'columns': 2})
+    parent.add_argument('Fasta', widget="FileChooser",
                         help='Path of fasta file that contains all contigs to submit to GenBank\n')
-    parser.add_argument('Template', widget="FileChooser",
+    parent.add_argument('Template', widget="FileChooser",
                         help='Path of template file generate here :\n'
                              'https://submit.ncbi.nlm.nih.gov/genbank/template/submission/\n')
-    parser.add_argument('Output', widget="DirChooser",
-                        help='Path to output directory\n')
-    parser.add_argument('Minlength', type=int,
-                        default=75,
-                        help='minimum length for ORF prediction\n')
-    parser.add_argument('-c','--Comment', type=str,
-                        default='',
-                        help='Add comment for all submisson\n')
+
+    orf_parser = parent.add_argument_group('ORF - params', gooey_options={'columns': 2, 'show_border': True})
+    orf_parser.add_argument('Minlength', type=int,
+                            default=300,
+                            help='minimum length for ORF prediction\n', gooey_options={"full_width": False})
+    check_box = parent.add_argument_group('ORF - options', gooey_options={'columns': 1, 'show_border': True})
+    check_box.add_argument('-O', '--Overlaps', widget="CheckBox",
+                           action="store_true",
+                           default=False,
+                           help='  Keep overlaps genes ')
+    check_box.add_argument('-F', '--Frame', widget="CheckBox",
+                           action="store_true",
+                           default=False,
+                           help=' Keep gene with different frame\n')
+
+    output_parser = parent.add_argument_group('Output option', gooey_options={'show_border': True})
+    output_parser.add_argument('Output', widget="DirChooser",
+                               help='Path to output directory\n')
+    output_parser.add_argument('-c', '--Comment', type=str,
+                               default='',
+                               help='Add comment for all submisson\n')
 
     args = parser.parse_args()
+
     fasta = args.Fasta
     template = args.Template
     output = args.Output
     minlength = int(args.Minlength)
     comment = args.Comment
+    overlaps = args.Overlaps  # If False, we remove all overlaps gene and keept only the longest
+    frame = args.Frame  # If False, we remove all gene with frame different that majority of gene
     # Verify format for fasta and the extension of template
     verify_input(fasta, template)
 
     # Launch tbl2asn & orffinder
-    create_submit_file(fasta, template, output, minlength, comment)
+    create_submit_file(fasta, template, output, minlength, comment, overlaps, frame)
 
     # Contigs name contains all Id of seq in fasta input
     contigs_names = list(fasta2dict(fasta).keys())
