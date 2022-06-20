@@ -5,6 +5,8 @@ import subprocess
 import pyrodigal
 # Import orffinder package for predict orf
 from orffinder import orffinder
+# For parse source file
+import pandas as pd
 # For path treatment
 from pathlib import Path
 # Import some biopython package to process fasta sequences
@@ -18,8 +20,20 @@ import os
 import shutil
 # For know the OS system
 import platform
+# Color package
+import colored
+from colored import stylize, attr, fg
+# Time for know how second tools take for generate ASN
+import time
 
-
+# For add color in terminal
+colored.set_tty_aware(False)
+def formated_error(message):
+    """
+    This function use stylize for format error message
+    """
+    error_message = stylize(message, fg('red') + attr('bold') + attr('underlined'))
+    return error_message
 def choose_tbl2asn():
     """
     This tools verify the OS system and choose the correct tbl2asn to launch for your computer
@@ -29,7 +43,8 @@ def choose_tbl2asn():
     elif platform.system() == 'Windows':
         return f'{Path(__file__).resolve().parent}/tools/tbl2asn.windows/tbl2asn.exe'
     else:
-        raise TypeError(f'You OS system are not support, for now this package works only in Linux and Windows.')
+        raise TypeError(formated_error(f'You OS system are not support,'
+                                      f' for now this package works only in Linux and Windows.'))
 
 
 def fasta2dict(filename):
@@ -40,12 +55,14 @@ def fasta2dict(filename):
         return SeqIO.to_dict(SeqIO.parse(fastaFile, "fasta"))
 
 
-def create_fasta(biopython_object, output_file):
+def create_fasta(biopython_object, output_file, description):
     """
      This function take a biopython sequence in input and create a fasta
     """
     with open(output_file, 'w') as f:
-        SeqIO.write(biopython_object, f, "fasta")
+        record = SeqRecord(biopython_object.seq, id=biopython_object.id,
+                           name=biopython_object.id, description=description)
+        SeqIO.write(record, f, "fasta")
 
 
 # Warning they have a problem with pyrodigual, example : k1k141_212201 ORF 2.
@@ -67,7 +84,7 @@ def search_orf(biopython_object):
                         "start_partial": pred.partial_begin,  # True if start of ORF is truncated
                         "end_partial": pred.partial_end,  # True if end of ORF is truncated
                         # partial is True if start or end is truncated
-                        "partial":  True if True in [pred.partial_begin, pred.partial_end] else False,
+                        "partial": True if True in [pred.partial_begin, pred.partial_end] else False,
                         "strand": pred.strand}
     return dico
 
@@ -107,7 +124,7 @@ def search_orf_orffinder(biopython_object, length_min=300):
         dico[id_orf] = {"start": orf['start'],  # Start of ORF
                         "end": orf['end'],  # End of ORF
                         "end_partial": orf['trailing'],  # True if end of ORF is truncated
-                        "partial":  orf['trailing'],  # partial is True if start or end is truncated
+                        "partial": orf['trailing'],  # partial is True if start or end is truncated
                         "strand": orf['sense']}
     return dico
 
@@ -148,6 +165,8 @@ def remove_overlaps_gene(dico):
             dico_final[new_id] = dico[id_orf]
     return dico_final
 
+
+    return error_message
 def remove_strand_gene(dico):
     """
     This function take the dict output from search_orf_orffinder and remove gene with different frame
@@ -155,7 +174,7 @@ def remove_strand_gene(dico):
     # Retrieve all strand for all orf in the sequence
     liste_strand = [dico[id_orf]["strand"] for id_orf in dico]
     # Select the majority strand
-    strand_majority = [strand for strand in liste_strand if liste_strand.count(strand) >= 0.5*len(liste_strand)][0]
+    strand_majority = [strand for strand in liste_strand if liste_strand.count(strand) >= 0.5 * len(liste_strand)][0]
 
     i = 0
     dico_final = {}
@@ -179,9 +198,9 @@ def orf_pfam(biopython_object, dico_orf, database, contig):
         for orf_id in dico_orf:
             orf = dico_orf[orf_id]
             if orf['strand'] == '+':
-                sequence = biopython_object.seq[orf['start']-1:orf['end']-1]
+                sequence = biopython_object.seq[orf['start'] - 1:orf['end'] - 1]
             if orf['strand'] == '-':
-                sequence = biopython_object.seq[orf['end']-1:orf['start']-1].reverse_complement()
+                sequence = biopython_object.seq[orf['end'] - 1:orf['start'] - 1].reverse_complement()
             record = SeqRecord(sequence.translate(), id=orf_id, name=orf_id, description='')
             SeqIO.write(record, fasta_file, "fasta")
 
@@ -218,30 +237,68 @@ def orf_to_feature(dico_orf, contig, output_file):
             # This 2 condition are use for remove position at end or start in function of strand
             if info['strand'] == '+':
                 text = text + \
-                     f"{info['start']}\t{end_symbol}{info['end']-remove_end}\tgene\n" \
-                     f"\t\t\tgene\t{gene_id}\n" \
-                     f"{info['start']}\t{end_symbol}{info['end']-remove_end}\tCDS\n" \
-                     f"\t\t\tproduct\t{gene_id}\n" \
-                     f"\t\t\tnote\t{'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}\n"
+                       f"{info['start']}\t{end_symbol}{info['end'] - remove_end}\tgene\n" \
+                       f"\t\t\tgene\t{gene_id}\n" \
+                       f"{info['start']}\t{end_symbol}{info['end'] - remove_end}\tCDS\n" \
+                       f"\t\t\tproduct\t{gene_id}\n" \
+                       f"\t\t\tnote\t{'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}\n"
             else:
                 text = text + \
-                     f"{info['start']-remove_end}\t{end_symbol}{info['end']}\tgene\n" \
-                     f"\t\t\tgene\t{gene_id}\n" \
-                     f"{info['start']-remove_end}\t{end_symbol}{info['end']}\tCDS\n" \
-                     f"\t\t\tproduct\t{gene_id}\n" \
-                     f"\t\t\tnote\t{'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}\n"
+                       f"{info['start'] - remove_end}\t{end_symbol}{info['end']}\tgene\n" \
+                       f"\t\t\tgene\t{gene_id}\n" \
+                       f"{info['start'] - remove_end}\t{end_symbol}{info['end']}\tCDS\n" \
+                       f"\t\t\tproduct\t{gene_id}\n" \
+                       f"\t\t\tnote\t{'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}\n"
         output.write(text)
 
 
-def create_submit_file(fasta, template, output, minlength, comment, overlaps, frame):
+def parse_src_file(src_file):
+    """
+    This function take the path of src file and generate a data object with all compatible feature for each seq.
+    In addition create another dico with only description and comment to add at each seq.
+    And create a list of seq to submit
+    """
+    liste_compatible_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country',
+                                'Host', 'Collection_date','Definition', 'Comment']
+    liste_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country', 'Host', 'Collection_date']
+
+    data_src = pd.read_csv(src_file, sep='\t', header=0)
+
+    # Verify if all information are present in source file
+    missing_columns = [feature for feature in liste_compatible_feature if feature not in data_src.columns]
+    if len(missing_columns) != 0:
+        txt_missing_columns = ', '.join([f'"{elt}"' for elt in missing_columns])
+        raise TypeError(formated_error(f"The '{src_file.split('/')[-1]}' isn't correct, "
+                                       f"please check that file  they missing {txt_missing_columns} columns."))
+
+    # Keept only sequence with polymerase ( score "1" on source file)
+    data_src = data_src[data_src['Polymerase'] == 1]
+
+    # Create dico for description & comment columns
+    dico_description = {data_src.loc[index, 'Sequence_ID']:
+                        {'definition': data_src.loc[index, 'Definition'],
+                        'comment': str(data_src.loc[index, 'Comment']).replace('nan', '')}  # Remove nan values
+                        for index in data_src.index}
+
+    # Create data frame for src file by sequence
+
+    data_src = data_src[liste_feature]
+
+    return dico_description, data_src
+
+
+def create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame):
     """
     This function take fasta input which contains all contigs to submit, the template ncbi,
     the directory output and the min length for a orf and launch all other function for create the ASN file.
     """
     fasta_dict = fasta2dict(fasta)
+    dico_description, data_src = parse_src_file(src_file)
     count = 0  # For initiate the count (progress bar)
-    len_fasta = len(fasta_dict) + 1  # For know how many loop the script done (progress bar)
+    len_fasta = len(dico_description) + 1  # For know how many loop the script done (progress bar)
     for seq_id in fasta_dict:
+        if seq_id not in dico_description:  # Only seq with polymerase are in dico_description
+            continue
         count += 1
         print_progress(count, len_fasta)  # Progress bar
         sys.stdout.flush()  # For print correctly progress bar in Graphical User interface (GUI)
@@ -250,7 +307,10 @@ def create_submit_file(fasta, template, output, minlength, comment, overlaps, fr
             os.mkdir(directory_tmp)
         # Create fasta for the contigs
         fasta_tmp = f'{directory_tmp}/{seq_id}.fasta'
-        create_fasta(fasta_dict[seq_id], fasta_tmp)
+        create_fasta(fasta_dict[seq_id], fasta_tmp, dico_description[seq_id]['definition'])
+        # Create source file for the contigs
+        data_sample = data_src[data_src['Sequence_ID'] == seq_id]
+        data_sample.to_csv(f'{directory_tmp}/{seq_id}.src', sep='\t', index=False)
         # Create feature file of contigs
         tbl_tmp = f'{directory_tmp}/{seq_id}.tbl'
         dico_orf = search_orf_orffinder(fasta_dict[seq_id], minlength)
@@ -261,38 +321,49 @@ def create_submit_file(fasta, template, output, minlength, comment, overlaps, fr
         # Don't create feature file if no orf find
         if dico_orf is not None:
             orf_to_feature(dico_orf, seq_id, tbl_tmp)
+        comment_final = comment
+        # Add individual comment from src file to the contig
+        if dico_description[seq_id]['comment'] != '':
+            comment_final = f"{dico_description[seq_id]['comment']} ; {comment_final}"
         tbl2asn_tool = choose_tbl2asn()
         # Use tbl2asn tools for generate from fasta & tbl the seq file in ASN.1 format
-        subprocess.run(f'{tbl2asn_tool} -t {template} -i {fasta_tmp} -y "{comment}" -V bv',
+        subprocess.run(f'{tbl2asn_tool} -t {template} -i {fasta_tmp} -y "{comment_final}" -V bv',
                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
 
 
-def verif_quality(output, contigs_names):
+def verif_quality(output, contigs_names, list_kept):
     """
     This function check if errorsummary.val is empty, else raise a warning for user
     """
     liste_warning = []
     with open(f'{output}/Error_validation_genebank.txt', 'w') as output_qual:
         for contig_name in contigs_names:
+            if contig_name not in list_kept:
+                liste_warning.append(stylize(f"\t* The contig {contig_name} isn't "
+                                     f"process because they haven't polymerase\n",
+                                              fg('dark_orange_3a') + attr('bold')))
+                continue
             contig = f"{output}/{contig_name}"
             file = f'{contig}/{contig_name}.val'
             with open(file, 'r') as file_quality:
                 liste_file = list(file_quality)
                 if liste_file:
-                    liste_warning.append(f"\t\t* Warning, the contig {contig_name} isn't "
-                                         f"process correctly, please verify the errorsummary.val in output\n")
+                    liste_warning.append(stylize("\t* The contig {contig_name} isn't "
+                                         f"process correctly, please verify the errorsummary.val in output\n",
+                                                 fg('red') + attr('bold')))
                     txt_error = "\t".join(liste_file)
                     output_qual.write(f"* {contig_name} have some problem, here you can find the GenBank error :"
                                       f"\n{txt_error}\n\n")
         if liste_warning:
-            print("\n" + '\t' + '-' * 50)
-            print('\t' + "|" + " " * 20 + 'Warning' + " " * 25 + "|")
-            print('\t' + '-' * 50 + '\n')
+            print()
+            print(stylize('Warning : ', fg('red') + attr('bold') + attr('underlined')))
+            print()
+
             for warning in liste_warning:
                 print(warning)
 
 
-def sort_output(output, contigs_names):
+def sort_output(output, list_kept,):
     """
     This function take output directory path and a list of contigs names for sort all output of this script.
     """
@@ -304,14 +375,14 @@ def sort_output(output, contigs_names):
         if not path_output_directory.exists():
             subprocess.run(f'mkdir {path_output_directory}',
                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
-        for contig_name in contigs_names:
+        for contig_name in list_kept:
             contig_path = f"{output}/{contig_name}"
             output_path = f'{path_output_directory}/{contig_name}{liste_output_directory[output_directory]}'
             if Path(output_path).exists():
                 os.remove(output_path)
             os.rename(f'{contig_path}/{contig_name}{liste_output_directory[output_directory]}', output_path)
 
-    for contig_name in contigs_names:
+    for contig_name in list_kept:
         contig_path = f"{output}/{contig_name}"
         shutil.rmtree(contig_path)
 
@@ -324,11 +395,11 @@ def verify_input(fasta, template):
     try:
         fasta_dict = fasta2dict(fasta)
     except:
-        raise TypeError(f"The {fasta} isn't correct, please check that file is at fasta format (maybe duplicates ID) ")
+        raise TypeError(formated_error(f"The {fasta.split('/')[-1]} isn't correct, please check that file is at fasta format (maybe duplicates ID) "))
     if fasta_dict == {}:
-        raise TypeError(f"The {fasta} isn't correct, please check that file is at fasta format")
+        raise TypeError(formated_error(f"The {fasta.split('/')[-1]} isn't correct, please check that file is at fasta format"))
     if not template.endswith('.sbt'):
-        raise TypeError(f"The {template} file must have a .sbt extension")
+        raise TypeError(formated_errorf("The {template} file must have a .sbt extension"))
 
 
 def print_progress(index, total):
@@ -340,25 +411,42 @@ def print_progress(index, total):
 
 
 @Gooey(program_name="Submit to GenBank",
+       richtext_controls=True,
        advanced=True,
        program_description="\nCreate ASN file for submission to GenBank",
        progress_regex=r"^Progress (\d+) %$",
        image_dir=Path(__file__).resolve().with_name("image"),
-       richtext_controls=True,
        navigation='SIDEBAR',
-       default_size=(950, 730))
-def IU_parser():
+       default_size=(950, 830),
+       menu=[{
+           'name': 'About',
+           'items': [{
+               'type': 'AboutDialog',
+               'menuTitle': 'About',
+               'name': 'Gsub - Submit to GenBank',
+               'description': 'This tools is used for create ASN.1 file for facilitate submission to GeneBank.'
+                              'He use orffinder package python for detect orf and tbl2asn to transformate fasta and '
+                              'author template into ASN file',
+               'version': '1.0.0',
+               'website': 'https://github.com/FlorianCHA/Gsub',
+               'developer': 'Florian CHARRIAT',
+           }]
+       }])
+def gui_parser():
     parser = GooeyParser(description='Process some integers.')
     sub = parser.add_subparsers(dest='ssss')
     # Main TABs
     parser = sub.add_parser('options', prog="Options")
-    parent = parser.add_argument_group('Input Options', gooey_options={'columns': 2})
+    parent = parser.add_argument_group('Options', gooey_options={'columns': 2})
     parent.add_argument('Fasta', widget="FileChooser",
                         help='Path of fasta file that contains all contigs to submit to GenBank\n')
     parent.add_argument('Template', widget="FileChooser",
                         help='Path of template file generate here :\n'
                              'https://submit.ncbi.nlm.nih.gov/genbank/template/submission/\n')
-
+    parent.add_argument('Source', widget="FileChooser",
+                        help='Path of Source file')
+    parent.add_argument('Output', widget="DirChooser",
+                               help='Path to output directory\n')
     orf_parser = parent.add_argument_group('ORF - params', gooey_options={'columns': 2, 'show_border': True})
     orf_parser.add_argument('Minlength', type=int,
                             default=300,
@@ -373,9 +461,8 @@ def IU_parser():
                            default=False,
                            help=' Keep gene with different frame\n')
 
-    output_parser = parent.add_argument_group('Output option', gooey_options={'show_border': True})
-    output_parser.add_argument('Output', widget="DirChooser",
-                               help='Path to output directory\n')
+    output_parser = parent.add_argument_group('Optional option', gooey_options={'show_border': True})
+
     output_parser.add_argument('-c', '--Comment', type=str,
                                default='',
                                help='Add comment for all submisson\n')
@@ -384,26 +471,38 @@ def IU_parser():
 
     fasta = args.Fasta
     template = args.Template
+    src_file = args.Source
     output = args.Output
     minlength = int(args.Minlength)
     comment = args.Comment
     overlaps = args.Overlaps  # If False, we remove all overlaps gene and keept only the longest
     frame = args.Frame  # If False, we remove all gene with frame different that majority of gene
     # Verify format for fasta and the extension of template
+    start = time.time()
+    print(stylize(f'Gsub tools start at {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())}',fg('green') + attr('bold') + attr('underlined')))
+    print()
     verify_input(fasta, template)
 
     # Launch tbl2asn & orffinder
-    create_submit_file(fasta, template, output, minlength, comment, overlaps, frame)
+    create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame)
 
     # Contigs name contains all Id of seq in fasta input
     contigs_names = list(fasta2dict(fasta).keys())
+    # Create liste with only contigs that have polymerase
+    dico_description, data_src = parse_src_file(src_file)
+    list_kept = list(dico_description.keys())
+
+    print()
+    end = time.time()
+    print(stylize(f'Gsub tools finish at {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())}',fg('green') + attr('bold') + attr('underlined')))
+    print(stylize(f'Time elapsed : {round(end - start, 3)} sec',fg('black') + attr('bold')))
 
     # Verify if all errorsummary.val file are empty
-    verif_quality(output, contigs_names)
+    verif_quality(output, contigs_names, list_kept)
 
     # Sort all output file
-    sort_output(output, contigs_names)
+    sort_output(output, list_kept)
 
 
 if __name__ == '__main__':
-    IU_parser()
+    gui_parser()

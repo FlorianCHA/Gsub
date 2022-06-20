@@ -28,7 +28,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='submission_GenBank_UI',
+    name='Gsub_windows',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
