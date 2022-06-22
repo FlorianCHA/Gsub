@@ -25,15 +25,21 @@ import colored
 from colored import stylize, attr, fg
 # Time for know how second tools take for generate ASN
 import time
+# For polymerase detection
+import pyhmmer
 
 # For add color in terminal
 colored.set_tty_aware(False)
+
+
 def formated_error(message):
     """
     This function use stylize for format error message
     """
     error_message = stylize(message, fg('red') + attr('bold') + attr('underlined'))
     return error_message
+
+
 def choose_tbl2asn():
     """
     This tools verify the OS system and choose the correct tbl2asn to launch for your computer
@@ -44,7 +50,7 @@ def choose_tbl2asn():
         return f'{Path(__file__).resolve().parent}/tools/tbl2asn.windows/tbl2asn.exe'
     else:
         raise TypeError(formated_error(f'You OS system are not support,'
-                                      f' for now this package works only in Linux and Windows.'))
+                                       f' for now this package works only in Linux and Windows.'))
 
 
 def fasta2dict(filename):
@@ -161,12 +167,11 @@ def remove_overlaps_gene(dico):
     for id_orf in dico:
         if id_orf not in liste_id_to_remove:
             i += 1
-            new_id = f'{id_orf.split("_")[0]}_g{i}'  # Rename gene
+            new_id = f'{id_orf.split("_g")[0]}_g{i}'  # Rename gene
             dico_final[new_id] = dico[id_orf]
     return dico_final
 
 
-    return error_message
 def remove_strand_gene(dico):
     """
     This function take the dict output from search_orf_orffinder and remove gene with different frame
@@ -182,19 +187,19 @@ def remove_strand_gene(dico):
         # Select all orf with the majority strand
         if dico[id_orf]['strand'] == strand_majority:
             i += 1
-            new_id = f'{id_orf.split("_")[0]}_g{i}'  # Rename gene
+            new_id = f'{id_orf.split("_g")[0]}_g{i}'  # Rename gene
             dico_final[new_id] = dico[id_orf]
 
     return dico_final
 
 
-def orf_pfam(biopython_object, dico_orf, database, contig):
+def orf_pfam(biopython_object, output_aa, dico_orf, database, score_cutoff, eval_cutoff, cov_cutoff):
     """
     This function take biopython object and orf dico fron search_orf or search_orf_finder output
-    and use hmmseach for search if orf exist in the pfam database provide by user
+    and use hmmseach for search polymerase
     """
     # Create fasta with all orf find
-    with open(f'{contig}_orf.fasta', 'w') as fasta_file:
+    with open(output_aa, 'w') as fasta_file:
         for orf_id in dico_orf:
             orf = dico_orf[orf_id]
             if orf['strand'] == '+':
@@ -204,11 +209,37 @@ def orf_pfam(biopython_object, dico_orf, database, contig):
             record = SeqRecord(sequence.translate(), id=orf_id, name=orf_id, description='')
             SeqIO.write(record, fasta_file, "fasta")
 
-    subprocess.run(f'hmmsearch --tblout {contig}.pfam -E 1e-5 {database} {contig}_orf.fasta',
-                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
+    # For know length of each orf
+    seq = fasta2dict(output_aa)
+    len_seq = {id_seq: len(seq[id_seq].seq) for id_seq in seq}
+
+    # Charge orf with pyHMMER package
+    with pyhmmer.easel.SequenceFile(output_aa, digital=True) as seq_file:
+        sequences = list(seq_file)
+
+    # Search polymerase with polymerase pfam database
+    dico_hits = {}
+    for hmm in pyhmmer.plan7.HMMFile(database):
+        pipeline = pyhmmer.plan7.Pipeline(hmm.alphabet)
+        hits = pipeline.search_hmm(hmm, sequences)
+        if hits.hits_reported != 0:
+            for hit in hits:
+                len_best_domain = hit.domains[0].alignment.target_to - hit.domains[0].alignment.target_from
+                print(f"{hit.name.decode('utf-8')} | score : {hit.score} | eval : {hit.evalue}  | cov : {round(len_best_domain / len_seq[hit.name.decode('utf-8')], 3)}")
+                if hit.score >= score_cutoff and hit.evalue <= eval_cutoff and len_best_domain / len_seq[
+                    hit.name.decode('utf-8')] >= cov_cutoff:
+                    if hit.name.decode('utf-8') in dico_hits:
+                        if dico_hits[hit.name.decode('utf-8')]['score'] < hit.score:
+                            dico_hits[hit.name.decode('utf-8')] = {"description": hmm.description.decode('utf-8'),
+                                                                   "score": hit.score}
+                    else:
+                        dico_hits[hit.name.decode('utf-8')] = {"description": hmm.description.decode('utf-8'),
+                                                               "score": hit.score}
+
+    return dico_hits
 
 
-def orf_to_feature(dico_orf, contig, output_file):
+def orf_to_feature(dico_orf, contig, output_file, dico_pol):
     """
     This function take the output of search_orf function and create a feature file for GenBank submission at this format
     >Feature Contig1670
@@ -233,7 +264,8 @@ def orf_to_feature(dico_orf, contig, output_file):
                 remove_end = 0
             else:
                 remove_end = 1
-
+            # Create note variable for know if it's polymerase, hypothetical protein or partial protein
+            note = f"{dico_pol[gene_id] if gene_id in dico_pol else 'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}"
             # This 2 condition are use for remove position at end or start in function of strand
             if info['strand'] == '+':
                 text = text + \
@@ -241,14 +273,14 @@ def orf_to_feature(dico_orf, contig, output_file):
                        f"\t\t\tgene\t{gene_id}\n" \
                        f"{info['start']}\t{end_symbol}{info['end'] - remove_end}\tCDS\n" \
                        f"\t\t\tproduct\t{gene_id}\n" \
-                       f"\t\t\tnote\t{'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}\n"
+                       f"\t\t\tnote\t{note}\n"
             else:
                 text = text + \
                        f"{info['start'] - remove_end}\t{end_symbol}{info['end']}\tgene\n" \
                        f"\t\t\tgene\t{gene_id}\n" \
                        f"{info['start'] - remove_end}\t{end_symbol}{info['end']}\tCDS\n" \
                        f"\t\t\tproduct\t{gene_id}\n" \
-                       f"\t\t\tnote\t{'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}\n"
+                       f"\t\t\tnote\t{note}\n"
         output.write(text)
 
 
@@ -259,7 +291,7 @@ def parse_src_file(src_file):
     And create a list of seq to submit
     """
     liste_compatible_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country',
-                                'Host', 'Collection_date','Definition', 'Comment']
+                                'Host', 'Collection_date', 'Definition', 'Comment']
     liste_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country', 'Host', 'Collection_date']
 
     data_src = pd.read_csv(src_file, sep='\t', header=0)
@@ -287,17 +319,21 @@ def parse_src_file(src_file):
     return dico_description, data_src
 
 
-def create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame):
+def create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame,
+                       database, score_cutoff, eval_cutoff, cov_cutoff):
     """
     This function take fasta input which contains all contigs to submit, the template ncbi,
     the directory output and the min length for a orf and launch all other function for create the ASN file.
     """
+    # liste_kept is a list which contains all contigs with polymerase
     fasta_dict = fasta2dict(fasta)
+    liste_kept = list(fasta_dict.keys())
     dico_description, data_src = parse_src_file(src_file)
     count = 0  # For initiate the count (progress bar)
     len_fasta = len(dico_description) + 1  # For know how many loop the script done (progress bar)
     for seq_id in fasta_dict:
         if seq_id not in dico_description:  # Only seq with polymerase are in dico_description
+            liste_kept.remove(seq_id)
             continue
         count += 1
         print_progress(count, len_fasta)  # Progress bar
@@ -318,9 +354,16 @@ def create_submit_file(fasta, template, src_file, output, minlength, comment, ov
             dico_orf = remove_overlaps_gene(dico_orf)
         if not frame:
             dico_orf = remove_strand_gene(dico_orf)
+        # Use PFAM for detect polymerase
+        aa_tmp = f'{directory_tmp}/{seq_id}.faa' # Temp file which contain orf protein
+        dico_pol = orf_pfam(fasta_dict[seq_id], aa_tmp, dico_orf, database, score_cutoff, eval_cutoff, cov_cutoff)
+        if len(dico_pol) == 0:  # If polymerase isn't detect, we don't create ASN file.
+            shutil.rmtree(directory_tmp)
+            liste_kept.remove(seq_id)
+            continue
         # Don't create feature file if no orf find
         if dico_orf is not None:
-            orf_to_feature(dico_orf, seq_id, tbl_tmp)
+            orf_to_feature(dico_orf, seq_id, tbl_tmp, dico_pol)
         comment_final = comment
         # Add individual comment from src file to the contig
         if dico_description[seq_id]['comment'] != '':
@@ -329,7 +372,7 @@ def create_submit_file(fasta, template, src_file, output, minlength, comment, ov
         # Use tbl2asn tools for generate from fasta & tbl the seq file in ASN.1 format
         subprocess.run(f'{tbl2asn_tool} -t {template} -i {fasta_tmp} -y "{comment_final}" -V bv',
                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
-
+    return liste_kept
 
 def verif_quality(output, contigs_names, list_kept):
     """
@@ -340,15 +383,14 @@ def verif_quality(output, contigs_names, list_kept):
         for contig_name in contigs_names:
             if contig_name not in list_kept:
                 liste_warning.append(stylize(f"\t* The contig {contig_name} isn't "
-                                     f"process because they haven't polymerase\n",
-                                              fg('dark_orange_3a') + attr('bold')))
+                                     f"process because they haven't polymerase\n", fg('dark_orange_3a') + attr('bold')))
                 continue
             contig = f"{output}/{contig_name}"
             file = f'{contig}/{contig_name}.val'
             with open(file, 'r') as file_quality:
                 liste_file = list(file_quality)
                 if liste_file:
-                    liste_warning.append(stylize("\t* The contig {contig_name} isn't "
+                    liste_warning.append(stylize(f"\t* The contig {contig_name} isn't "
                                          f"process correctly, please verify the errorsummary.val in output\n",
                                                  fg('red') + attr('bold')))
                     txt_error = "\t".join(liste_file)
@@ -395,11 +437,13 @@ def verify_input(fasta, template):
     try:
         fasta_dict = fasta2dict(fasta)
     except:
-        raise TypeError(formated_error(f"The {fasta.split('/')[-1]} isn't correct, please check that file is at fasta format (maybe duplicates ID) "))
+        raise TypeError(formated_error(f"The {fasta.split('/')[-1]} isn't correct, "
+                                       f"please check that file is at fasta format (maybe duplicates ID) "))
     if fasta_dict == {}:
-        raise TypeError(formated_error(f"The {fasta.split('/')[-1]} isn't correct, please check that file is at fasta format"))
+        raise TypeError(formated_error(f"The {fasta.split('/')[-1]} isn't correct,"
+                                       f" please check that file is at fasta format"))
     if not template.endswith('.sbt'):
-        raise TypeError(formated_errorf("The {template} file must have a .sbt extension"))
+        raise TypeError(formated_error("The {template} file must have a .sbt extension"))
 
 
 def print_progress(index, total):
@@ -412,6 +456,7 @@ def print_progress(index, total):
 
 @Gooey(program_name="Submit to GenBank",
        richtext_controls=True,
+       use_events=['VALIDATE_FORM'],
        advanced=True,
        program_description="\nCreate ASN file for submission to GenBank",
        progress_regex=r"^Progress (\d+) %$",
@@ -446,7 +491,7 @@ def gui_parser():
     parent.add_argument('Source', widget="FileChooser",
                         help='Path of Source file')
     parent.add_argument('Output', widget="DirChooser",
-                               help='Path to output directory\n')
+                        help='Path to output directory\n')
     orf_parser = parent.add_argument_group('ORF - params', gooey_options={'columns': 2, 'show_border': True})
     orf_parser.add_argument('Minlength', type=int,
                             default=300,
@@ -477,25 +522,31 @@ def gui_parser():
     comment = args.Comment
     overlaps = args.Overlaps  # If False, we remove all overlaps gene and keept only the longest
     frame = args.Frame  # If False, we remove all gene with frame different that majority of gene
+    # PFAM database for identfication of polymerase
+    database = f'{Path(__file__).resolve().parent}/tools/Polymerase.hmm'
+    score_cutoff = 50
+    eval_cutoff = 0.001
+    cov_cutoff = 70 / 100
+
     # Verify format for fasta and the extension of template
     start = time.time()
-    print(stylize(f'Gsub tools start at {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())}',fg('green') + attr('bold') + attr('underlined')))
+    print(stylize(f'Gsub tools start at {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())}',
+                  fg('green') + attr('bold') + attr('underlined')))
     print()
     verify_input(fasta, template)
 
     # Launch tbl2asn & orffinder
-    create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame)
+    list_kept = create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame,
+                                    database, score_cutoff, eval_cutoff, cov_cutoff)
 
     # Contigs name contains all Id of seq in fasta input
     contigs_names = list(fasta2dict(fasta).keys())
-    # Create liste with only contigs that have polymerase
-    dico_description, data_src = parse_src_file(src_file)
-    list_kept = list(dico_description.keys())
 
     print()
     end = time.time()
-    print(stylize(f'Gsub tools finish at {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())}',fg('green') + attr('bold') + attr('underlined')))
-    print(stylize(f'Time elapsed : {round(end - start, 3)} sec',fg('black') + attr('bold')))
+    print(stylize(f'Gsub tools finish at {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())}',
+                  fg('green') + attr('bold') + attr('underlined')))
+    print(stylize(f'Time elapsed : {round(end - start, 3)} sec', fg('black') + attr('bold')))
 
     # Verify if all errorsummary.val file are empty
     verif_quality(output, contigs_names, list_kept)
