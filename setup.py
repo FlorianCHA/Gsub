@@ -42,7 +42,6 @@ def main():
         setup_requires=['setuptools_scm'],
         python_requires='>=3.6',
         install_requires=[
-            'pyrodigal',
             'orffinder',
             'pathlib',
             'Bio',
@@ -52,6 +51,7 @@ def main():
             'gooey==1.0.8.1',
             'argparse',
             'pyinstaller',
+            'pyhmmer',
         ],
         # Pypi information
         platforms=['unix', 'linux'],

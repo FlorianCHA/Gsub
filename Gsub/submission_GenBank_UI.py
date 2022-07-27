@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @author Florian Charriat
+
+
 # Import subprocess for launch OS command from script, here it's for launch tbl2asn
 import subprocess
-# Import pyrodigal package for predict orf
-import pyrodigal
 # Import orffinder package for predict orf
 from orffinder import orffinder
 # For parse source file
@@ -25,11 +27,16 @@ import colored
 from colored import stylize, attr, fg
 # Time for know how second tools take for generate ASN
 import time
+# for removing warning python
+import warnings
 # For polymerase detection
 import pyhmmer
 
 # For add color in terminal
 colored.set_tty_aware(False)
+
+# Remove warning python
+warnings.filterwarnings("ignore")
 
 
 def formated_error(message):
@@ -45,7 +52,7 @@ def choose_tbl2asn():
     This tools verify the OS system and choose the correct tbl2asn to launch for your computer
     """
     if platform.system() == 'Linux':
-        return f'{Path(__file__).resolve().parent}/tools/tbl2asn.linux'
+        return f'{Path(__file__).resolve().parent}/tools/table2asn.linux'
     elif platform.system() == 'Windows':
         return f'{Path(__file__).resolve().parent}/tools/tbl2asn.windows/tbl2asn.exe'
     else:
@@ -71,30 +78,6 @@ def create_fasta(biopython_object, output_file, description):
         SeqIO.write(record, f, "fasta")
 
 
-# Warning they have a problem with pyrodigual, example : k1k141_212201 ORF 2.
-# Serafìn doesn't have ORF2 maybe we don't must take small gene or gene in strand -1
-# So finally we use orffinder package (search_orf_orffinder function)
-def search_orf(biopython_object):
-    """
-    This function take a biopython sequence in input and create a dict object which contains all information about
-    orf predict by prodigal tools.
-    """
-    # Initialization of Pyrodigal object
-    orf_finder_tools = pyrodigal.OrfFinder(meta=True)
-    gene = orf_finder_tools.find_genes(bytes(biopython_object.seq))
-    dico = {}
-    for i, pred in enumerate(gene):
-        id_orf = f"{biopython_object.id}_g{i + 1}"  # Create the ORF id based on the contig ID
-        dico[id_orf] = {"start": pred.begin,  # Start of ORF
-                        "end": pred.end,  # End of ORF
-                        "start_partial": pred.partial_begin,  # True if start of ORF is truncated
-                        "end_partial": pred.partial_end,  # True if end of ORF is truncated
-                        # partial is True if start or end is truncated
-                        "partial": True if True in [pred.partial_begin, pred.partial_end] else False,
-                        "strand": pred.strand}
-    return dico
-
-
 def search_orf_orffinder(biopython_object, length_min=300):
     """
     This function take a biopython sequence in input and create a dict object which contains all information about
@@ -106,27 +89,45 @@ def search_orf_orffinder(biopython_object, length_min=300):
     # If the tools not detect orf, the function return a None object
     if not orf_result:
         return None
-    # Sort result in function of orf start
-    orf_result = sorted(orf_result, key=lambda x: x['start'])
+    # Create liste of gene include in other gene which must be delete
     liste_to_remove = []
-    # Retrieve the first orf information (start and end)
-    start_orf_prev = orf_result[0]['start']
-    end_orf_prev = orf_result[0]['end']
-
     # Compare orf with previously good orf for see if orf is inclued in the previously good orf
-    for orf in orf_result[1:]:
-        if orf['start'] >= start_orf_prev and orf['end'] <= end_orf_prev:
-            liste_to_remove.append(orf)  # If orf is inclued in previously orf, he is remove or result
-        else:  # If orf is not inclued, we change the previously start and end orf by this one
-            start_orf_prev = orf['start']
-            end_orf_prev = orf['end']
+    # For frame "+"
+    if '+' in [elt["sense"] for elt in orf_result]:
+        orf_result_sens_pos = [elt for elt in orf_result if elt['sense'] == '+']
+        # Sort result in function of orf start
+        orf_result_sens_pos = sorted(orf_result_sens_pos, key=lambda x: x['start'])
+        start_orf_prev = orf_result_sens_pos[0]['start']
+        end_orf_prev = orf_result_sens_pos[0]['end']
+        for orf in orf_result_sens_pos[1:]:
+            if orf['start'] >= start_orf_prev and orf['end'] <= end_orf_prev:
+                liste_to_remove.append(orf)  # If orf is inclued in previously orf, he is remove or result
+            else:  # If orf is not inclued, we change the previously start and end orf by this one
+                start_orf_prev = orf['start']
+                end_orf_prev = orf['end']
+
+    # Remove all orf inclued in an another orf
+    # For frame "-"
+    if '-' in [elt["sense"] for elt in orf_result]:
+        orf_result_sens_neg = [elt for elt in orf_result if elt['sense'] == '-']
+        # Sort result in function of orf start
+        orf_result_sens_neg = sorted(orf_result_sens_neg, key=lambda x: x['start'])
+        start_orf_prev = orf_result_sens_neg[0]['start']
+        end_orf_prev = orf_result_sens_neg[0]['end']
+        for orf in orf_result_sens_neg[1:]:
+            if orf['start'] >= start_orf_prev and orf['end'] <= end_orf_prev:
+                liste_to_remove.append(orf)  # If orf is inclued in previously orf, he is remove or result
+            else:  # If orf is not inclued, we change the previously start and end orf by this one
+                start_orf_prev = orf['start']
+                end_orf_prev = orf['end']
     # Remove all orf inclued in an another orf
     liste_final = [orf for orf in orf_result if orf not in liste_to_remove]
 
+
     # Create dico result for other function
     dico = {}
-    for i, orf in enumerate(liste_final):
-        id_orf = f"{biopython_object.id}_g{i + 1}"
+    for i, orf in enumerate(sorted(liste_final, key=lambda x: x['start'])):
+        id_orf = f"ORF{i + 1}"
         dico[id_orf] = {"start": orf['start'],  # Start of ORF
                         "end": orf['end'],  # End of ORF
                         "end_partial": orf['trailing'],  # True if end of ORF is truncated
@@ -157,7 +158,7 @@ def remove_overlaps_gene(dico):
             end_2 = max(dico_length[length_2]['start'], dico_length[length_2]['end'])
             # Look if the two genes do not overlap and if one of the two genes is not already in the list of removes,
             # in this case the gene of the list is not to take into account
-            if (start_2 < start < end_2 or start_2 < end < end_2) and length not in liste_remove:
+            if (start < start_2 < end or start < end_2 < end) and length not in liste_remove and length > length_2:
                 liste_remove.append(length_2)
     # Retrieve ID orf from length id
     liste_id_to_remove = [dico_length[length]['id'] for length in liste_remove]
@@ -167,7 +168,7 @@ def remove_overlaps_gene(dico):
     for id_orf in dico:
         if id_orf not in liste_id_to_remove:
             i += 1
-            new_id = f'{id_orf.split("_g")[0]}_g{i}'  # Rename gene
+            new_id = f'{id_orf.split("F")[0]}F{i}'  # Rename gene
             dico_final[new_id] = dico[id_orf]
     return dico_final
 
@@ -178,8 +179,22 @@ def remove_strand_gene(dico):
     """
     # Retrieve all strand for all orf in the sequence
     liste_strand = [dico[id_orf]["strand"] for id_orf in dico]
+
     # Select the majority strand
-    strand_majority = [strand for strand in liste_strand if liste_strand.count(strand) >= 0.5 * len(liste_strand)][0]
+    strand_majority = [strand for strand in liste_strand if liste_strand.count(strand) > 0.5 * len(liste_strand)]
+    if not strand_majority:
+        dico_length = {'+': [], '-': []}
+        for id_orf in dico:
+            length = max(dico[id_orf]['start'], dico[id_orf]['end']) - min(dico[id_orf]['start'], dico[id_orf]['end'])
+            strand = dico[id_orf]['strand']
+            dico_length[strand].append(length)
+
+        if sum(dico_length['-']) > sum(dico_length['+']):
+            strand_majority = '-'
+        else:
+            strand_majority = '+'
+    else:
+        strand_majority = strand_majority[0]
 
     i = 0
     dico_final = {}
@@ -187,7 +202,7 @@ def remove_strand_gene(dico):
         # Select all orf with the majority strand
         if dico[id_orf]['strand'] == strand_majority:
             i += 1
-            new_id = f'{id_orf.split("_g")[0]}_g{i}'  # Rename gene
+            new_id = f'{id_orf.split("F")[0]}F{i}'  # Rename gene
             dico_final[new_id] = dico[id_orf]
 
     return dico_final
@@ -195,7 +210,7 @@ def remove_strand_gene(dico):
 
 def orf_pfam(biopython_object, output_aa, dico_orf, database, score_cutoff, eval_cutoff, cov_cutoff):
     """
-    This function take biopython object and orf dico fron search_orf or search_orf_finder output
+    This function take biopython object and orf dico from search_orf or search_orf_finder output
     and use hmmseach for search polymerase
     """
     # Create fasta with all orf find
@@ -224,18 +239,27 @@ def orf_pfam(biopython_object, output_aa, dico_orf, database, score_cutoff, eval
         hits = pipeline.search_hmm(hmm, sequences)
         if hits.hits_reported != 0:
             for hit in hits:
-                len_best_domain = hit.domains[0].alignment.target_to - hit.domains[0].alignment.target_from
-                print(f"{hit.name.decode('utf-8')} | score : {hit.score} | eval : {hit.evalue}  | cov : {round(len_best_domain / len_seq[hit.name.decode('utf-8')], 3)}")
-                if hit.score >= score_cutoff and hit.evalue <= eval_cutoff and len_best_domain / len_seq[
-                    hit.name.decode('utf-8')] >= cov_cutoff:
-                    if hit.name.decode('utf-8') in dico_hits:
-                        if dico_hits[hit.name.decode('utf-8')]['score'] < hit.score:
+                start_best_domaine = hit.domains[0].alignment.target_from
+                end_best_domaine = hit.domains[0].alignment.target_to
+                len_best_domain = end_best_domaine - start_best_domaine
+                if hit.score >= score_cutoff and hit.evalue <= eval_cutoff:
+                    if len_best_domain / len_seq[hit.name.decode('utf-8')] >= cov_cutoff:
+                        if hit.name.decode('utf-8') in dico_hits:
+                            if dico_hits[hit.name.decode('utf-8')]['score'] < hit.score:
+                                dico_hits[hit.name.decode('utf-8')] = {"description": hmm.description.decode('utf-8'),
+                                                                       "score": hit.score}
+                        else:
                             dico_hits[hit.name.decode('utf-8')] = {"description": hmm.description.decode('utf-8'),
                                                                    "score": hit.score}
                     else:
-                        dico_hits[hit.name.decode('utf-8')] = {"description": hmm.description.decode('utf-8'),
-                                                               "score": hit.score}
-
+                        polymerase = f"{hmm.description.decode('utf-8')}"
+                        if hit.name.decode('utf-8') in dico_hits:
+                            if dico_hits[hit.name.decode('utf-8')]['score'] < hit.score:
+                                dico_hits[hit.name.decode('utf-8')] = {"description": polymerase,
+                                                                       "score": hit.score}
+                        else:
+                            dico_hits[hit.name.decode('utf-8')] = {"description": polymerase,
+                                                                   "score": hit.score}
     return dico_hits
 
 
@@ -265,22 +289,18 @@ def orf_to_feature(dico_orf, contig, output_file, dico_pol):
             else:
                 remove_end = 1
             # Create note variable for know if it's polymerase, hypothetical protein or partial protein
-            note = f"{dico_pol[gene_id] if gene_id in dico_pol else 'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}"
+            note = f"{dico_pol[gene_id]['description'] if gene_id in dico_pol else 'partial hypothetical protein' if info['partial'] else 'hypothetical protein'}"
             # This 2 condition are use for remove position at end or start in function of strand
             if info['strand'] == '+':
                 text = text + \
-                       f"{info['start']}\t{end_symbol}{info['end'] - remove_end}\tgene\n" \
-                       f"\t\t\tgene\t{gene_id}\n" \
                        f"{info['start']}\t{end_symbol}{info['end'] - remove_end}\tCDS\n" \
-                       f"\t\t\tproduct\t{gene_id}\n" \
-                       f"\t\t\tnote\t{note}\n"
+                       f"\t\t\tproduct\t{note}\n" \
+                       f"\t\t\tnote\t{gene_id}\n"
             else:
                 text = text + \
-                       f"{info['start'] - remove_end}\t{end_symbol}{info['end']}\tgene\n" \
-                       f"\t\t\tgene\t{gene_id}\n" \
                        f"{info['start'] - remove_end}\t{end_symbol}{info['end']}\tCDS\n" \
-                       f"\t\t\tproduct\t{gene_id}\n" \
-                       f"\t\t\tnote\t{note}\n"
+                       f"\t\t\tproduct\t{note}\n" \
+                       f"\t\t\tnote\t{gene_id}\n"
         output.write(text)
 
 
@@ -291,11 +311,10 @@ def parse_src_file(src_file):
     And create a list of seq to submit
     """
     liste_compatible_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country',
-                                'Host', 'Collection_date', 'Definition', 'Comment']
+                                'Host', 'Collection_date', 'Definition', 'Molecule', 'Lineage']
     liste_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country', 'Host', 'Collection_date']
 
     data_src = pd.read_csv(src_file, sep='\t', header=0)
-
     # Verify if all information are present in source file
     missing_columns = [feature for feature in liste_compatible_feature if feature not in data_src.columns]
     if len(missing_columns) != 0:
@@ -304,12 +323,13 @@ def parse_src_file(src_file):
                                        f"please check that file  they missing {txt_missing_columns} columns."))
 
     # Keept only sequence with polymerase ( score "1" on source file)
-    data_src = data_src[data_src['Polymerase'] == 1]
-
+    # data_src = data_src[data_src['Polymerase'] == 1]
     # Create dico for description & comment columns
     dico_description = {data_src.loc[index, 'Sequence_ID']:
                         {'definition': data_src.loc[index, 'Definition'],
-                        'comment': str(data_src.loc[index, 'Comment']).replace('nan', '')}  # Remove nan values
+                         'lineage': data_src.loc[index, 'Lineage'],
+                         'polymerase': data_src.loc[index, 'Polymerase'],
+                         'molecule': str(data_src.loc[index, 'Molecule'])}  # Remove nan values
                         for index in data_src.index}
 
     # Create data frame for src file by sequence
@@ -319,8 +339,8 @@ def parse_src_file(src_file):
     return dico_description, data_src
 
 
-def create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame,
-                       database, score_cutoff, eval_cutoff, cov_cutoff):
+def create_submit_file(fasta, template, src_file, output, minlengthorf, minlengthcontig, assembler, technology,
+                       overlaps, frame, database, score_cutoff, eval_cutoff, cov_cutoff, genome):
     """
     This function take fasta input which contains all contigs to submit, the template ncbi,
     the directory output and the min length for a orf and launch all other function for create the ASN file.
@@ -332,7 +352,8 @@ def create_submit_file(fasta, template, src_file, output, minlength, comment, ov
     count = 0  # For initiate the count (progress bar)
     len_fasta = len(dico_description) + 1  # For know how many loop the script done (progress bar)
     for seq_id in fasta_dict:
-        if seq_id not in dico_description:  # Only seq with polymerase are in dico_description
+        # Only seq with polymerase are in dico_description and a contigs > min length give by user
+        if seq_id not in dico_description or len(fasta_dict[seq_id].seq) <= minlengthcontig:
             liste_kept.remove(seq_id)
             continue
         count += 1
@@ -349,30 +370,45 @@ def create_submit_file(fasta, template, src_file, output, minlength, comment, ov
         data_sample.to_csv(f'{directory_tmp}/{seq_id}.src', sep='\t', index=False)
         # Create feature file of contigs
         tbl_tmp = f'{directory_tmp}/{seq_id}.tbl'
-        dico_orf = search_orf_orffinder(fasta_dict[seq_id], minlength)
+        dico_orf = search_orf_orffinder(fasta_dict[seq_id], minlengthorf)
         if not overlaps:
             dico_orf = remove_overlaps_gene(dico_orf)
         if not frame:
             dico_orf = remove_strand_gene(dico_orf)
         # Use PFAM for detect polymerase
-        aa_tmp = f'{directory_tmp}/{seq_id}.faa' # Temp file which contain orf protein
+        aa_tmp = f'{directory_tmp}/{seq_id}.faa'  # Temp file which contain orf protein
         dico_pol = orf_pfam(fasta_dict[seq_id], aa_tmp, dico_orf, database, score_cutoff, eval_cutoff, cov_cutoff)
-        if len(dico_pol) == 0:  # If polymerase isn't detect, we don't create ASN file.
-            shutil.rmtree(directory_tmp)
-            liste_kept.remove(seq_id)
-            continue
+
         # Don't create feature file if no orf find
         if dico_orf is not None:
             orf_to_feature(dico_orf, seq_id, tbl_tmp, dico_pol)
-        comment_final = comment
         # Add individual comment from src file to the contig
-        if dico_description[seq_id]['comment'] != '':
-            comment_final = f"{dico_description[seq_id]['comment']} ; {comment_final}"
+        # Src line
         tbl2asn_tool = choose_tbl2asn()
+        # Comment for Assembly information
+        with open(f'{directory_tmp}/{seq_id}.cmt', 'w') as comment_file:
+            comment_file.write('StructuredCommentPrefix\t##Assembly-Data-START##\n')
+            comment_file.write(f'Assembly Method\t{assembler}\n')
+            comment_file.write(f'Sequencing Technology\t{technology}\n')
+            comment_file.write('StructuredCommentSuffix\t##Assembly-Data-END##\n')
+        # Lineage = Clade; order (unclassifed virus if order == NA or _order)
+        feature = ''
+        if genome == 'Prokaryote':
+            feature = feature + "[gcode=11]"
+        molecule = dico_description[seq_id]['molecule'].upper()
+        if molecule == 'RNA':
+            feature = feature + " [molecule=rna]"
+        circular = False
+        if circular:
+            feature = feature + " [topology=circular]"
+        lineage = dico_description[seq_id]['lineage']
+        feature = feature + f" [lineage={lineage}]"
         # Use tbl2asn tools for generate from fasta & tbl the seq file in ASN.1 format
-        subprocess.run(f'{tbl2asn_tool} -t {template} -i {fasta_tmp} -y "{comment_final}" -V bv',
+        subprocess.run(f'{tbl2asn_tool} -t {template} -i {fasta_tmp} -j "{feature}" -V bv',
                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, shell=True)
+        #######################################################
     return liste_kept
+
 
 def verif_quality(output, contigs_names, list_kept):
     """
@@ -462,7 +498,7 @@ def print_progress(index, total):
        progress_regex=r"^Progress (\d+) %$",
        image_dir=Path(__file__).resolve().with_name("image"),
        navigation='SIDEBAR',
-       default_size=(950, 830),
+       default_size=(999, 999),
        menu=[{
            'name': 'About',
            'items': [{
@@ -492,11 +528,17 @@ def gui_parser():
                         help='Path of Source file')
     parent.add_argument('Output', widget="DirChooser",
                         help='Path to output directory\n')
-    orf_parser = parent.add_argument_group('ORF - params', gooey_options={'columns': 2, 'show_border': True})
-    orf_parser.add_argument('Minlength', type=int,
+    filter = parser.add_argument_group('Fasta Filter')
+    filter.add_argument('Min_Length_Contig', type=int,
+                        default=1500,
+                        help='Minimum length for Contig submission\n')
+    filter.add_argument('-P', '--Genome', choices=['Eukaryote', 'Prokaryote'],
+                        default="Prokaryote")
+    orf_parser = filter.add_argument_group('ORF - params', gooey_options={'columns': 2, 'show_border': True})
+    orf_parser.add_argument('Min_Length_ORF', type=int,
                             default=300,
-                            help='minimum length for ORF prediction\n', gooey_options={"full_width": False})
-    check_box = parent.add_argument_group('ORF - options', gooey_options={'columns': 1, 'show_border': True})
+                            help='Minimum length for ORF prediction\n', gooey_options={"full_width": False})
+    check_box = filter.add_argument_group('ORF - options', gooey_options={'columns': 1, 'show_border': True})
     check_box.add_argument('-O', '--Overlaps', widget="CheckBox",
                            action="store_true",
                            default=False,
@@ -505,27 +547,41 @@ def gui_parser():
                            action="store_true",
                            default=False,
                            help=' Keep gene with different frame\n')
-
-    output_parser = parent.add_argument_group('Optional option', gooey_options={'show_border': True})
-
-    output_parser.add_argument('-c', '--Comment', type=str,
+    pfam_parser = filter.add_argument_group('PFAM option', gooey_options={'show_border': True})
+    pfam_parser.add_argument('-s', '--score', type=float,
+                             default=50,
+                             help='Min Hmm score for predict polymerase\n')
+    pfam_parser.add_argument('-e', '--evalue', type=float,
+                             default=0.001,
+                             help='Evalue cutoff score for predict polymerase\n')
+    output_parser = parser.add_argument_group('Assembly information')
+    output_parser.add_argument('-a', '--Assembler', type=str,
                                default='',
-                               help='Add comment for all submisson\n')
+                               help='Assembler information (as exemple : megahit v. 1.2.9 & Cap3 v. 10.2011)\n')
+    output_parser.add_argument('-t', '--Technology', type=str,
+                               default='Illumina',
+                               help='Sequencing technology (ex : Illumina)\n')
 
     args = parser.parse_args()
-
     fasta = args.Fasta
     template = args.Template
     src_file = args.Source
+    genome = args.Genome
     output = args.Output
-    minlength = int(args.Minlength)
-    comment = args.Comment
+    minlengthcontig = int(args.Min_Length_Contig)
+    minlengthorf = int(args.Min_Length_ORF)
+
+    assembler = args.Assembler
+    technology = args.Technology
+
     overlaps = args.Overlaps  # If False, we remove all overlaps gene and keept only the longest
     frame = args.Frame  # If False, we remove all gene with frame different that majority of gene
     # PFAM database for identfication of polymerase
     database = f'{Path(__file__).resolve().parent}/tools/Polymerase.hmm'
-    score_cutoff = 50
-    eval_cutoff = 0.001
+    score_cutoff = args.score
+    eval_cutoff = args.evalue
+
+    # Cut off for know if orf is only polymerase or if we must give position of polymerase in orf?
     cov_cutoff = 70 / 100
 
     # Verify format for fasta and the extension of template
@@ -536,8 +592,8 @@ def gui_parser():
     verify_input(fasta, template)
 
     # Launch tbl2asn & orffinder
-    list_kept = create_submit_file(fasta, template, src_file, output, minlength, comment, overlaps, frame,
-                                    database, score_cutoff, eval_cutoff, cov_cutoff)
+    list_kept = create_submit_file(fasta, template, src_file, output, minlengthorf, minlengthcontig, assembler,
+                                   technology, overlaps, frame, database, score_cutoff, eval_cutoff, cov_cutoff, genome)
 
     # Contigs name contains all Id of seq in fasta input
     contigs_names = list(fasta2dict(fasta).keys())
