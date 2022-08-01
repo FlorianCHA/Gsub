@@ -1,8 +1,6 @@
 # What is Gsub ?
 
-Gusb :
-
-Gsub is a Graphical User Interface (GUI) tools written in python which allow to annotate and submit a large number of viral sequences.
+Gsub is a Graphical User Interface (GUI) tool written in python which allow to annotate and submit a large number of viral sequences.
 Gsub uses python package *ORFfinder* to identify and annotate openreading frames (ORFs) in 
 the sequences. Then, python package *pyHMMER* is used to detect potential polymerase-encoding ORFs 
 (detection threshold can be modify in parameters). 
@@ -13,45 +11,73 @@ a graphical interface and to run Gsub in Windows or Linux without installing a P
 
 # Install
 
-## Download exec
+They are two differents way to install Gsub tool.
 
-<a href="./Gsub/exec/Gsub_linux" download>Gsub for Linux</a>
+The first way is to download executbale file for you os (Linux or Windows) here :
 
-<a href="./Gsub/exec/Gsub_windows.exe" download>Gsub for Windows 10</a>
+* <a href="./Gsub/exec/Gsub_linux" download>Gsub for Linux</a>
 
+* <a href="./Gsub/exec/Gsub_windows.exe" download>Gsub for Windows 10</a>
 
-## With python 
-
-Command line
-
-``
-pip install gsub
-``
+The second way is to install the Gsub package on pypi. For that you can use the follow command line :
 
 
-# RUNNING GSUB
+> pip install gsub
 
-Image with explanation of all field.
 
-## Input file
+Then you can launch the Graphical interface with the follow command line :
 
-* FASTA
-* Source 
-* Template
-* Output
 
-## Output file
+> submission_GenBank_UI
 
-* GBF file
-* sqn file 
 
-And a error summary file for all sequence with XX error.
+# Running Gsub
 
-## Option
+![](./Gsub/image/GUI_exemple.png)
 
-* Length of contigs
-* Length of ORF
-* Remove overlaps
-* Keep only one strand
-* PFAM score for identification of polymerase
-* Assembly information, becarful Genbank format assembler v. x.x.x.  
+## Files options
+
+### Fasta
+
+A file at fasta format which contains all sequences to submit at GenBank data base. 
+
+### Template
+
+The template file contain all information about publication, bio-projet and author. You can create this file 
+[here](https://submit.ncbi.nlm.nih.gov/genbank/template/submission/).
+
+
+### Source
+
+The source file is an information file which contains all information for submission. Below you can file a exemple for this file.
+You can find an example file in the example directory. 
+
+| Sequence_ID | Definitions                     | Organism     | Strain     | Country | Host          | Collection_date | Molecule | Lineage                   |
+|-------------|---------------------------------|--------------|------------|---------|---------------|-----------------|----------|---------------------------|
+| Contig_1    | Alilaet Virus, partial sequence | Alilaet virus | Egypt_2022 | Egypt   | Culex pipiens | 2022            | RNA      | Riboviria; Picornavirales | 
+| Contig_2    | Ana Virus, partial sequence     | Ana virus    | France_2015 | France  | Culex pipiens | 2015            | RNA      | Riboviria; Jingchuvirales | 
+
+### Output
+
+A directory output that contains different subdirectories:
+
+* GBF directory that contains a gbf file for each contig. Gbf file can be used for visualized the final submission at GenBank format
+* SQN directory that contains a sqn file for each contigs. It's this files that can be send by mail at XX for submission.
+
+And in this output directory, we have also error summary file for all sequence with the common discrepancy report for all the sequences with error messages due to discrepancies with submission requirements.
+
+## Fasta Filter 
+
+
+| Argument             | Definition                                                                                                            |
+|----------------------|-----------------------------------------------------------------------------------------------------------------------|
+| Min_Length_Contig    | The minimum length of sequence to be submitted                                                                        |
+| Genome               | Eukaryote or Prokaryote (for translation code used for submission)                                                    |
+| Min_Length_ORF       | Minimum length of orf to keep it in submission                                                                        |
+| Remove overlaps      | If checked the tool will keep all the orf that are overlapped instead of keeping only the largest orf                 |
+| Keep only one strand | If checked the tool will keep all orf that are on both strands instead of keeping only the orf on the majority strand |
+| PFAM option          | Score and evalue minimum for predict polymerase                                                                       |
+
+## Assembly information
+
+* Assembly information, be careful Genbank format assembler v. x.x.x.  
