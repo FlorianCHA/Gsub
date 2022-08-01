@@ -54,7 +54,7 @@ def choose_tbl2asn():
     if platform.system() == 'Linux':
         return f'{Path(__file__).resolve().parent}/tools/table2asn.linux'
     elif platform.system() == 'Windows':
-        return f'{Path(__file__).resolve().parent}/tools/tbl2asn.windows/tbl2asn.exe'
+        return f'{Path(__file__).resolve().parent}/tools/table2asn.windows//table2asn.exe'
     else:
         raise TypeError(formated_error(f'You OS system are not support,'
                                        f' for now this package works only in Linux and Windows.'))
@@ -311,10 +311,12 @@ def parse_src_file(src_file):
     And create a list of seq to submit
     """
     liste_compatible_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country',
-                                'Host', 'Collection_date', 'Definition', 'Molecule', 'Lineage']
+                                'Host', 'Collection_date', 'Definition', 'Molecule', 'Lineage', 'reverse']
     liste_feature = ['Sequence_ID', 'Organism', 'Strain', 'Country', 'Host', 'Collection_date']
 
     data_src = pd.read_csv(src_file, sep='\t', header=0)
+    data_src = data_src.fillna('')
+
     # Verify if all information are present in source file
     missing_columns = [feature for feature in liste_compatible_feature if feature not in data_src.columns]
     if len(missing_columns) != 0:
@@ -327,8 +329,8 @@ def parse_src_file(src_file):
     # Create dico for description & comment columns
     dico_description = {data_src.loc[index, 'Sequence_ID']:
                         {'definition': data_src.loc[index, 'Definition'],
+                         'strand': f'{"+" if float(data_src.loc[index, "reverse"]) > 0 else "-"}',
                          'lineage': data_src.loc[index, 'Lineage'],
-                         'polymerase': data_src.loc[index, 'Polymerase'],
                          'molecule': str(data_src.loc[index, 'Molecule'])}  # Remove nan values
                         for index in data_src.index}
 
@@ -364,9 +366,18 @@ def create_submit_file(fasta, template, src_file, output, minlengthorf, minlengt
             os.mkdir(directory_tmp)
         # Create fasta for the contigs
         fasta_tmp = f'{directory_tmp}/{seq_id}.fasta'
-        create_fasta(fasta_dict[seq_id], fasta_tmp, dico_description[seq_id]['definition'])
+        if dico_description[seq_id]['strand'] == "-":
+            seq = fasta_dict[seq_id].seq
+            seq = seq.reverse_complement()
+            fasta_dict[seq_id] = SeqRecord(seq, id=fasta_dict[seq_id].id,
+                           name=fasta_dict[seq_id].id, description="")
+        create_fasta(fasta_dict[seq_id], fasta_tmp,
+                     dico_description[seq_id]['definition'], )
         # Create source file for the contigs
         data_sample = data_src[data_src['Sequence_ID'] == seq_id]
+        for column in data_sample.columns:
+            if (data_sample[column] == '').item():
+                data_sample = data_sample.drop(column, axis=1)
         data_sample.to_csv(f'{directory_tmp}/{seq_id}.src', sep='\t', index=False)
         # Create feature file of contigs
         tbl_tmp = f'{directory_tmp}/{seq_id}.tbl'
@@ -415,6 +426,8 @@ def verif_quality(output, contigs_names, list_kept):
     This function check if errorsummary.val is empty, else raise a warning for user
     """
     liste_warning = []
+    liste_error = []
+
     with open(f'{output}/Error_validation_genebank.txt', 'w') as output_qual:
         for contig_name in contigs_names:
             if contig_name not in list_kept:
@@ -426,7 +439,7 @@ def verif_quality(output, contigs_names, list_kept):
             with open(file, 'r') as file_quality:
                 liste_file = list(file_quality)
                 if liste_file:
-                    liste_warning.append(stylize(f"\t* The contig {contig_name} isn't "
+                    liste_error.append(stylize(f"\t* The contig {contig_name} isn't "
                                          f"process correctly, please verify the errorsummary.val in output\n",
                                                  fg('red') + attr('bold')))
                     txt_error = "\t".join(liste_file)
@@ -439,7 +452,8 @@ def verif_quality(output, contigs_names, list_kept):
 
             for warning in liste_warning:
                 print(warning)
-
+            for error in liste_error:
+                print(error)
 
 def sort_output(output, list_kept,):
     """
@@ -517,8 +531,8 @@ def gui_parser():
     parser = GooeyParser(description='Process some integers.')
     sub = parser.add_subparsers(dest='ssss')
     # Main TABs
-    parser = sub.add_parser('options', prog="Options")
-    parent = parser.add_argument_group('Options', gooey_options={'columns': 2})
+    parser = sub.add_parser('Files options', prog="Options")
+    parent = parser.add_argument_group('Files options', gooey_options={'columns': 2})
     parent.add_argument('Fasta', widget="FileChooser",
                         help='Path of fasta file that contains all contigs to submit to GenBank\n')
     parent.add_argument('Template', widget="FileChooser",
