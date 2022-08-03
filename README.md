@@ -15,7 +15,7 @@ They are two differents way to install Gsub tool.
 
 The first way is to download executbale file for you os (Linux or Windows) here :
 
-* <a href="./Gsub/exec/Gsub_linux" download>Gsub for Linux</a>
+* <a href=".https://github.com/FlorianCHA/upload-file/raw/master/Gsub_linux>Gsub for Linux</a>
 
 * <a href="./Gsub/exec/Gsub_windows.exe" download>Gsub for Windows 10</a>
 
@@ -80,4 +80,14 @@ And in this output directory, we have also error summary file for all sequence w
 
 ## Assembly information
 
-* Assembly information, be careful Genbank format assembler v. x.x.x.  
+### Assembler 
+
+In this part you must give the differents assembler used for your sequences. Be careful, you must add the version of each tools at this format : v. X.X.X
+
+Exemple :
+   
+     Megahit v. 1.2.9 & Cap3 v. 10.2011
+
+### Technology
+
+Here you must give the sequencing technology as exemple (e.g ABI 3730; 454 GS-FLX Titanium; Illumina GAIIx)
