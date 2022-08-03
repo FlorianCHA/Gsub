@@ -15,7 +15,7 @@ They are two differents way to install Gsub tool.
 
 The first way is to download executbale file for you os (Linux or Windows) here :
 
-* <a href=".https://github.com/FlorianCHA/upload-file/raw/master/Gsub_linux>Gsub for Linux</a>
+* <a href="https://github.com/FlorianCHA/upload-file/raw/master/Gsub_linux">Gsub for Linux</a>
 
 * <a href="./Gsub/exec/Gsub_windows.exe" download>Gsub for Windows 10</a>
 
