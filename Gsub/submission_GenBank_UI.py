@@ -30,7 +30,8 @@ import time
 # for removing warning python
 import warnings
 # For polymerase detection
-import pyhmmer
+if platform.system() == 'Linux':
+    import pyhmmer
 
 # For add color in terminal
 colored.set_tty_aware(False)
@@ -388,8 +389,11 @@ def create_submit_file(fasta, template, src_file, output, minlengthorf, minlengt
             dico_orf = remove_strand_gene(dico_orf)
         # Use PFAM for detect polymerase
         aa_tmp = f'{directory_tmp}/{seq_id}.faa'  # Temp file which contain orf protein
-        dico_pol = orf_pfam(fasta_dict[seq_id], aa_tmp, dico_orf, database, score_cutoff, eval_cutoff, cov_cutoff)
-
+        # As Hmmer is not available on windows we test if os is linux or windows. If is windows we don't use orf_pfam.
+        if platform.system() == 'Linux':
+            dico_pol = orf_pfam(fasta_dict[seq_id], aa_tmp, dico_orf, database, score_cutoff, eval_cutoff, cov_cutoff)
+        else :
+            dico_pol = {}
         # Don't create feature file if no orf find
         if dico_orf is not None:
             orf_to_feature(dico_orf, seq_id, tbl_tmp, dico_pol)

@@ -15,7 +15,7 @@ They are two differents way to install Gsub tool.
 
 The first way is to download executbale file for you os (Linux or Windows) here :
 
-* <a href=".https://github.com/FlorianCHA/upload-file/raw/master/Gsub_linux>Gsub for Linux</a>
+* <a href="https://github.com/FlorianCHA/upload-file/raw/master/Gsub_linux">Gsub for Linux</a>
 
 * <a href="./Gsub/exec/Gsub_windows.exe" download>Gsub for Windows 10</a>
 
@@ -52,11 +52,12 @@ The template file contain all information about publication, bio-projet and auth
 The source file is an information file which contains all information for submission. Below you can file a exemple for this file.
 You can find an example file in the example directory. 
 
-| Sequence_ID | Definitions                     | Organism     | Strain     | Country | Host          | Collection_date | Molecule | Lineage                   |
-|-------------|---------------------------------|--------------|------------|---------|---------------|-----------------|----------|---------------------------|
-| Contig_1    | Alilaet Virus, partial sequence | Alilaet virus | Egypt_2022 | Egypt   | Culex pipiens | 2022            | RNA      | Riboviria; Picornavirales | 
-| Contig_2    | Ana Virus, partial sequence     | Ana virus    | France_2015 | France  | Culex pipiens | 2015            | RNA      | Riboviria; Jingchuvirales | 
+| Sequence_ID | Definitions                     | Organism     | Strain     | Country | Host          | Collection_date | Molecule | Lineage                   | reverse |
+|-------------|---------------------------------|--------------|------------|---------|---------------|-----------------|----------|---------------------------|---------|
+| Contig_1    | Alilaet Virus, partial sequence | Alilaet virus | Egypt_2022 | Egypt   | Culex pipiens | 2022            | RNA      | Riboviria; Picornavirales | 1       | 
+| Contig_2    | Ana Virus, partial sequence     | Ana virus    | France_2015 | France  | Culex pipiens | 2015            | RNA      | Riboviria; Jingchuvirales | -1      |
 
+note : In the reverse columns you can put any number. you need only negative value for reverse strand and positive value for positive value.
 ### Output
 
 A directory output that contains different subdirectories:
