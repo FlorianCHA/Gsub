@@ -22,7 +22,9 @@ The first way is to download executbale file for you os (Linux or Windows) here 
 The second way for linux is to install the Gsub package. For that you can use the follow command line :
 
 > git clone https://github.com/FlorianCHA/Gsub.git
+
 > cd Gsyb
+
 > pip install .
 
 
