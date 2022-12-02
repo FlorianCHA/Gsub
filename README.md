@@ -19,7 +19,7 @@ The first way is to download executbale file for you os (Linux or Windows) here 
 
 * <a href="./Gsub/exec/Gsub_windows.exe" download>Gsub for Windows 10</a>
 
-The second way is to install the Gsub package on pypi. For that you can use the follow command line :
+The second way for linux is to install the Gsub package on pypi. For that you can use the follow command line :
 
 
 > pip install gsub
