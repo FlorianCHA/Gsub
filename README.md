@@ -23,7 +23,7 @@ The second way for linux is to install the Gsub package. For that you can use th
 
 > git clone https://github.com/FlorianCHA/Gsub.git
 
-> cd Gsyb
+> cd Gsub
 
 > pip install .
 
